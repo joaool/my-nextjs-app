@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 export default function About() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24">
@@ -40,12 +42,12 @@ export default function About() {
           </div>
         </div>
         
-        <a
+        <Link
           href="/"
           className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
         >
           ← Back to Home
-        </a>
+        </Link>
       </div>
     </main>
   )
