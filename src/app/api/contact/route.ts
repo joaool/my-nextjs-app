@@ -1,0 +1,40 @@
+import { NextRequest, NextResponse } from 'next/server'
+import clientPromise from '@/lib/mongodb'
+
+export async function POST(request: NextRequest) {
+  try {
+    const { subject, question, date } = await request.json()
+
+    // Validate required fields
+    if (!subject || !question || !date) {
+      return NextResponse.json(
+        { error: 'All fields (subject, question, date) are required' },
+        { status: 400 }
+      )
+    }
+
+    // Connect to MongoDB
+    const client = await clientPromise
+    const db = client.db('nextjs_app')
+    const collection = db.collection('contacts')
+
+    // Insert the document
+    const result = await collection.insertOne({
+      subject,
+      question,
+      date,
+      createdAt: new Date(),
+    })
+
+    return NextResponse.json(
+      { message: 'Contact information saved successfully', id: result.insertedId },
+      { status: 201 }
+    )
+  } catch (error) {
+    console.error('Error saving contact information:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}

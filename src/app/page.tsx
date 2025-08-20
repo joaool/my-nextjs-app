@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-24">
@@ -15,7 +17,7 @@ export default function Home() {
       </div>
 
       <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
+        <Link
           href="/about"
           className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
         >
@@ -28,7 +30,22 @@ export default function Home() {
           <p className="m-0 max-w-[30ch] text-sm opacity-50">
             Learn more about this Next.js application.
           </p>
-        </a>
+        </Link>
+
+        <Link
+          href="/contact"
+          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
+        >
+          <h2 className="mb-3 text-2xl font-semibold">
+            Contact{' '}
+            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
+              -&gt;
+            </span>
+          </h2>
+          <p className="m-0 max-w-[30ch] text-sm opacity-50">
+            Submit your questions and information.
+          </p>
+        </Link>
 
         <a
           href="https://nextjs.org/docs"
@@ -61,23 +78,6 @@ export default function Home() {
           </h2>
           <p className="m-0 max-w-[30ch] text-sm opacity-50">
             Learn about Next.js in an interactive course with quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50 text-balance">
-            Explore starter templates for Next.js.
           </p>
         </a>
       </div>
