@@ -1,9 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 export default function Contact() {
+  const searchParams = useSearchParams()
+  const username = searchParams.get('username') || ''
   const [formData, setFormData] = useState({
     subject: '',
     question: '',
@@ -50,11 +53,28 @@ export default function Contact() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24">
       <div className="max-w-2xl mx-auto w-full">
-        <h1 className="text-4xl font-bold mb-8 text-center bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          Contact Form
-        </h1>
+        <div className="flex items-center justify-center mb-8">
+          <div className="w-12 h-12 mr-4 flex items-center justify-center">
+            <img 
+              src="/framelink-icon.png.png" 
+              alt="FrameLink" 
+              className="w-12 h-12 object-contain"
+            />
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            FrameLink Support
+          </h1>
+        </div>
         
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
+          {username && (
+            <div className="text-center mb-6 pb-4 border-b border-gray-200 dark:border-gray-600">
+              <h2 className="text-2xl font-semibold text-gray-800 dark:text-gray-200">
+                Welcome {username}!
+              </h2>
+            </div>
+          )}
+          
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="subject" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
