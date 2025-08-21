@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function Contact() {
+function ContactForm() {
   const searchParams = useSearchParams()
   const username = searchParams.get('username') || ''
   const [formData, setFormData] = useState({
@@ -153,5 +153,17 @@ export default function Contact() {
         </div>
       </div>
     </main>
+  )
+}
+
+export default function Contact() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    }>
+      <ContactForm />
+    </Suspense>
   )
 }
