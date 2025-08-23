@@ -3,15 +3,18 @@ import clientPromise from '@/lib/mongodb'
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, subject, question, date } = await request.json()
+    const { username, subject, question } = await request.json()
 
     // Validate required fields
-    if (!subject || !question || !date) {
+    if (!subject || !question) {
       return NextResponse.json(
-        { error: 'All fields (subject, question, date) are required' },
+        { error: 'All fields (subject, question) are required' },
         { status: 400 }
       )
     }
+
+    // Generate today's date
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
 
     // Connect to MongoDB
     const client = await clientPromise
@@ -23,7 +26,7 @@ export async function POST(request: NextRequest) {
       username: username || null,
       subject,
       question,
-      date,
+      date: today,
       createdAt: new Date(),
     })
 
