@@ -3,12 +3,12 @@ import clientPromise from '@/lib/mongodb'
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, subject, question } = await request.json()
+    const { username, question } = await request.json()
 
     // Validate required fields
-    if (!subject || !question) {
+    if (!question) {
       return NextResponse.json(
-        { error: 'All fields (subject, question) are required' },
+        { error: 'Question field is required' },
         { status: 400 }
       )
     }
@@ -24,7 +24,6 @@ export async function POST(request: NextRequest) {
     // Insert the document
     const result = await collection.insertOne({
       username: username || null,
-      subject,
       question,
       date: today,
       createdAt: new Date(),
