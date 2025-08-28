@@ -8,7 +8,6 @@ function ContactForm() {
   const searchParams = useSearchParams()
   const username = searchParams.get('username') || ''
   const [formData, setFormData] = useState({
-    subject: '',
     question: ''
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -38,7 +37,7 @@ function ContactForm() {
 
       if (response.ok) {
         setMessage('Your information has been submitted successfully!')
-        setFormData({ subject: '', question: '' })
+        setFormData({ question: '' })
       } else {
         setMessage('Error submitting form. Please try again.')
       }
@@ -75,22 +74,6 @@ function ContactForm() {
           )}
           
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="subject" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Subject
-              </label>
-              <input
-                type="text"
-                id="subject"
-                name="subject"
-                value={formData.subject}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                placeholder="Enter the subject"
-              />
-            </div>
-
             <div>
               <label htmlFor="question" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Question
