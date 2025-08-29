@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import clientPromise from '@/lib/mongodb'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-})
+}) : null
+
+// Assistant ID - will be created if doesn't exist
+let assistantId: string | null = null
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,26 +21,73 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate answer using OpenAI with fallback
+    // Generate answer using OpenAI Assistants API with file_search
     let answer = ''
+    let citations: any[] = []
+    
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      if (!openai) {
+        throw new Error('OpenAI client not initialized')
+      }
+
+      // Get all uploaded file IDs from MongoDB
+      const client = await clientPromise
+      const db = client.db('nextjs_app')
+      const filesCollection = db.collection('uploaded_files')
+      
+      const uploadedFiles = await filesCollection
+        .find({})
+        .toArray()
+      
+      const fileIds = uploadedFiles.map(file => file.openai_file_id)
+      
+      console.log('Found uploaded files:', uploadedFiles.length)
+      console.log('File IDs:', fileIds)
+
+      // Get or create assistant with file_search enabled
+      const assistant = await getOrCreateAssistant()
+
+      // Create a thread with file attachments
+      const thread = await openai.beta.threads.create({
         messages: [
           {
-            role: 'system',
-            content: 'You are a helpful assistant for FrameLink Support. Provide clear, concise, and helpful answers to user questions.'
-          },
-          {
             role: 'user',
-            content: question
+            content: question,
+            attachments: fileIds.length > 0 ? fileIds.map(fileId => ({
+              file_id: fileId,
+              tools: [{ type: 'file_search' }]
+            })) : []
           }
-        ],
-        max_tokens: 500,
-        temperature: 0.7,
+        ]
       })
+
+      // Run the assistant and wait for completion
+      const runStatus = await openai.beta.threads.runs.createAndPoll(thread.id, {
+        assistant_id: assistant.id
+      })
+
+      if (runStatus.status === 'completed') {
+        // Get the assistant's response
+        const messages = await openai.beta.threads.messages.list(thread.id)
+        const assistantMessage = messages.data.find(msg => msg.role === 'assistant')
+        
+        if (assistantMessage && assistantMessage.content[0].type === 'text') {
+          const textContent = assistantMessage.content[0].text
+          answer = textContent.value
+          
+          // Extract citations if available
+          if (textContent.annotations) {
+            citations = textContent.annotations.map((annotation: any) => ({
+              type: annotation.type,
+              text: annotation.text,
+              file_citation: annotation.file_citation
+            }))
+          }
+        }
+      } else {
+        throw new Error(`Assistant run failed with status: ${runStatus.status}`)
+      }
       
-      answer = completion.choices[0]?.message?.content || 'Sorry, I could not generate an answer at this time.'
     } catch (openaiError: any) {
       console.error('OpenAI API error details:', {
         message: openaiError?.message,
@@ -55,6 +105,31 @@ export async function POST(request: NextRequest) {
         // Fallback responses for common questions
         answer = generateFallbackAnswer(question)
       }
+    }
+
+    // Helper function to get or create assistant
+    async function getOrCreateAssistant() {
+      if (assistantId && openai) {
+        try {
+          return await openai.beta.assistants.retrieve(assistantId)
+        } catch (error) {
+          // Assistant doesn't exist, create new one
+          assistantId = null
+        }
+      }
+
+      if (!assistantId && openai) {
+        const assistant = await openai.beta.assistants.create({
+          name: 'FrameLink Support Assistant',
+          instructions: 'You are a helpful assistant for FrameLink Support. When users attach files, search through them thoroughly to find relevant information. Always reference specific content from the uploaded files when available. Provide detailed answers with proper citations to the source files.',
+          model: 'gpt-4-turbo-preview',
+          tools: [{ type: 'file_search' }]
+        })
+        assistantId = assistant.id
+        return assistant
+      }
+
+      throw new Error('Could not create or retrieve assistant')
     }
 
     function generateFallbackAnswer(question: string): string {
@@ -96,12 +171,13 @@ export async function POST(request: NextRequest) {
       username: username || null,
       question,
       answer,
+      citations,
       date: today,
       createdAt: new Date(),
     })
 
     return NextResponse.json(
-      { message: 'Contact information saved successfully', answer, id: result.insertedId },
+      { message: 'Contact information saved successfully', answer, citations, id: result.insertedId },
       { status: 201 }
     )
   } catch (error) {

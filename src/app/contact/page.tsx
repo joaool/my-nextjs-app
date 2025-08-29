@@ -11,6 +11,7 @@ function ContactForm() {
     question: ''
   })
   const [answer, setAnswer] = useState('')
+  const [citations, setCitations] = useState<any[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -39,6 +40,7 @@ function ContactForm() {
       if (response.ok) {
         const data = await response.json()
         setAnswer(data.answer || 'No answer generated')
+        setCitations(data.citations || [])
         setMessage('Your question has been answered!')
       } else {
         setMessage('Error submitting form. Please try again.')
@@ -96,10 +98,30 @@ function ContactForm() {
               <label htmlFor="answer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Answer
               </label>
-              <div className="w-full h-48 p-3 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-50 dark:bg-gray-700 overflow-y-auto">
+              <div className="w-full min-h-48 p-3 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-50 dark:bg-gray-700 overflow-y-auto">
                 <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                   {answer || 'Ask a question above and the answer will appear here.'}
                 </div>
+                
+                {citations.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-gray-300 dark:border-gray-600">
+                    <h4 className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Sources:</h4>
+                    <div className="space-y-1">
+                      {citations.map((citation, index) => (
+                        <div key={index} className="text-xs text-gray-500 dark:text-gray-500">
+                          <span className="font-mono bg-gray-200 dark:bg-gray-600 px-1 rounded">
+                            [{index + 1}]
+                          </span>
+                          {citation.file_citation && (
+                            <span className="ml-2">
+                              {citation.file_citation.file_id} - {citation.text}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
