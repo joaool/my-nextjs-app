@@ -27,6 +27,8 @@ function ContactForm() {
     e.preventDefault()
     setIsSubmitting(true)
     setMessage('')
+    setAnswer('') // Clear previous answer
+    setCitations([]) // Clear previous citations
 
     try {
       const response = await fetch('/api/contact', {
@@ -82,16 +84,25 @@ function ContactForm() {
               <label htmlFor="question" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Question
               </label>
-              <textarea
-                id="question"
-                name="question"
-                value={formData.question}
-                onChange={handleChange}
-                required
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                placeholder="Enter your question"
-              />
+              <div className="flex gap-4">
+                <textarea
+                  id="question"
+                  name="question"
+                  value={formData.question}
+                  onChange={handleChange}
+                  required
+                  rows={4}
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="Enter your question"
+                />
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-6 rounded-md transition-colors h-fit"
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit'}
+                </button>
+              </div>
             </div>
 
             <div>
@@ -99,9 +110,18 @@ function ContactForm() {
                 Answer
               </label>
               <div className="w-full min-h-48 p-3 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-50 dark:bg-gray-700 overflow-y-auto">
-                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                  {answer || 'Ask a question above and the answer will appear here.'}
-                </div>
+                {isSubmitting ? (
+                  <div className="flex items-center justify-center h-32">
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Generating answer...</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                    {answer || 'Ask a question above and the answer will appear here.'}
+                  </div>
+                )}
                 
                 {citations.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-gray-300 dark:border-gray-600">
@@ -124,14 +144,6 @@ function ContactForm() {
                 )}
               </div>
             </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-md transition-colors"
-            >
-              {isSubmitting ? 'Submitting...' : 'Submit'}
-            </button>
           </form>
 
           {message && (
