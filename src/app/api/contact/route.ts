@@ -61,32 +61,119 @@ export async function POST(request: NextRequest) {
         ]
       })
 
-      // Run the assistant and wait for completion
-      const runStatus = await openai.beta.threads.runs.createAndPoll(thread.id, {
-        assistant_id: assistant.id
+      // Create a streaming response
+      const encoder = new TextEncoder()
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            // Start the assistant run with streaming
+            const run = await openai.beta.threads.runs.create(thread.id, {
+              assistant_id: assistant.id,
+              stream: true
+            })
+
+            let fullAnswer = ''
+            let streamCitations: any[] = []
+
+            // Handle the streaming events
+            for await (const event of run) {
+              if (event.event === 'thread.message.delta') {
+                const delta = event.data.delta
+                if (delta.content && delta.content[0] && delta.content[0].type === 'text') {
+                  const textDelta = delta.content[0].text?.value || ''
+                  fullAnswer += textDelta
+                  
+                  // Send the delta to the client
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+                    type: 'delta', 
+                    content: textDelta 
+                  })}\n\n`))
+                }
+              } else if (event.event === 'thread.message.completed') {
+                // Extract final citations
+                const message = event.data
+                if (message.content[0] && message.content[0].type === 'text') {
+                  const textContent = message.content[0].text
+                  if (textContent.annotations) {
+                    streamCitations = textContent.annotations.map((annotation: any) => ({
+                      type: annotation.type,
+                      text: annotation.text,
+                      file_citation: annotation.file_citation
+                    }))
+                  }
+                }
+              } else if (event.event === 'thread.run.completed') {
+                // Send final message with citations
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+                  type: 'complete', 
+                  citations: streamCitations 
+                })}\n\n`))
+                
+                // Store in database asynchronously
+                try {
+                  const today = new Date().toISOString().split('T')[0]
+                  const client = await clientPromise
+                  const db = client.db('nextjs_app')
+                  const collection = db.collection('contacts')
+                  
+                  await collection.insertOne({
+                    username: username || null,
+                    question,
+                    answer: fullAnswer,
+                    citations: streamCitations,
+                    date: today,
+                    createdAt: new Date(),
+                  })
+                } catch (dbError) {
+                  console.error('Database error:', dbError)
+                }
+                
+                break
+              } else if (event.event === 'thread.run.failed') {
+                throw new Error('Assistant run failed')
+              }
+            }
+          } catch (streamError) {
+            console.error('Streaming error:', streamError)
+            // Send fallback answer
+            const fallbackAnswer = generateFallbackAnswer(question)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+              type: 'fallback', 
+              content: fallbackAnswer 
+            })}\n\n`))
+            
+            // Store fallback in database asynchronously
+            try {
+              const today = new Date().toISOString().split('T')[0]
+              const client = await clientPromise
+              const db = client.db('nextjs_app')
+              const collection = db.collection('contacts')
+              
+              await collection.insertOne({
+                username: username || null,
+                question,
+                answer: fallbackAnswer,
+                citations: [],
+                date: today,
+                createdAt: new Date(),
+              })
+            } catch (dbError) {
+              console.error('Database error:', dbError)
+            }
+          }
+          
+          controller.close()
+        }
       })
 
-      if (runStatus.status === 'completed') {
-        // Get the assistant's response
-        const messages = await openai.beta.threads.messages.list(thread.id)
-        const assistantMessage = messages.data.find(msg => msg.role === 'assistant')
-        
-        if (assistantMessage && assistantMessage.content[0].type === 'text') {
-          const textContent = assistantMessage.content[0].text
-          answer = textContent.value
-          
-          // Extract citations if available
-          if (textContent.annotations) {
-            citations = textContent.annotations.map((annotation: any) => ({
-              type: annotation.type,
-              text: annotation.text,
-              file_citation: annotation.file_citation
-            }))
-          }
-        }
-      } else {
-        throw new Error(`Assistant run failed with status: ${runStatus.status}`)
-      }
+      // Return streaming response
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      })
       
     } catch (openaiError: any) {
       console.error('OpenAI API error details:', {
@@ -98,13 +185,32 @@ export async function POST(request: NextRequest) {
         fullError: openaiError
       })
       
-      // If it's still a quota issue, inform the user
-      if (openaiError?.status === 429 || openaiError?.code === 'insufficient_quota') {
-        answer = 'I apologize, but our AI service is currently experiencing high demand. Please try again in a few minutes, or contact our support team for immediate assistance.'
-      } else {
-        // Fallback responses for common questions
-        answer = generateFallbackAnswer(question)
+      // Return fallback response for OpenAI errors
+      const fallbackAnswer = generateFallbackAnswer(question)
+      
+      // Store fallback in database
+      try {
+        const today = new Date().toISOString().split('T')[0]
+        const client = await clientPromise
+        const db = client.db('nextjs_app')
+        const collection = db.collection('contacts')
+        
+        await collection.insertOne({
+          username: username || null,
+          question,
+          answer: fallbackAnswer,
+          citations: [],
+          date: today,
+          createdAt: new Date(),
+        })
+      } catch (dbError) {
+        console.error('Database error:', dbError)
       }
+      
+      return NextResponse.json(
+        { message: 'Contact information saved successfully', answer: fallbackAnswer, citations: [] },
+        { status: 201 }
+      )
     }
 
     // Helper function to get or create assistant
@@ -121,9 +227,18 @@ export async function POST(request: NextRequest) {
       if (!assistantId && openai) {
         const assistant = await openai.beta.assistants.create({
           name: 'FrameLink Support Assistant',
-          instructions: 'You are a helpful assistant for FrameLink Support. When users attach files, search through them thoroughly to find relevant information. Always reference specific content from the uploaded files when available. Provide detailed answers with proper citations to the source files.',
-          model: 'gpt-4-turbo-preview',
-          tools: [{ type: 'file_search' }]
+          instructions: 'You are a helpful assistant for FrameLink Support. When users attach files, search through them to find the most relevant information. Focus on providing concise, accurate answers with citations to the most important source content. Prioritize quality over quantity in your responses.',
+          model: 'gpt-4o-mini',
+          tools: [{ 
+            type: 'file_search',
+            file_search: {
+              max_num_results: 5,
+              ranking_options: {
+                ranker: 'auto',
+                score_threshold: 0.0
+              }
+            }
+          }]
         })
         assistantId = assistant.id
         return assistant
@@ -157,29 +272,6 @@ export async function POST(request: NextRequest) {
       
       return `Thank you for your question: "${question}"\n\nI'd be happy to help you with that! While our AI assistant is temporarily unavailable, our support team can provide detailed assistance.\n\n📧 Contact us at: support@framelink.com\n💬 Live chat available on our website\n📞 Call us at: 1-800-FRAMELINK\n\nWe'll get back to you within 2-4 hours during business days.`
     }
-
-    // Generate today's date
-    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
-
-    // Connect to MongoDB
-    const client = await clientPromise
-    const db = client.db('nextjs_app')
-    const collection = db.collection('contacts')
-
-    // Insert the document
-    const result = await collection.insertOne({
-      username: username || null,
-      question,
-      answer,
-      citations,
-      date: today,
-      createdAt: new Date(),
-    })
-
-    return NextResponse.json(
-      { message: 'Contact information saved successfully', answer, citations, id: result.insertedId },
-      { status: 201 }
-    )
   } catch (error) {
     console.error('Error saving contact information:', error)
     return NextResponse.json(

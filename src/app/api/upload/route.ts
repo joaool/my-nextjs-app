@@ -159,3 +159,57 @@ export async function GET() {
     )
   }
 }
+
+// DELETE endpoint to remove uploaded files
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const fileId = searchParams.get('fileId')
+    const openaiFileId = searchParams.get('openaiFileId')
+
+    if (!fileId || !openaiFileId) {
+      return NextResponse.json(
+        { error: 'File ID and OpenAI File ID are required' },
+        { status: 400 }
+      )
+    }
+
+    // Delete from OpenAI first
+    if (openai) {
+      try {
+        await openai.files.delete(openaiFileId)
+      } catch (openaiError: any) {
+        console.error('OpenAI file deletion error:', openaiError)
+        // Continue with MongoDB deletion even if OpenAI deletion fails
+      }
+    }
+
+    // Delete from MongoDB
+    const client = await clientPromise
+    const db = client.db('nextjs_app')
+    const collection = db.collection('uploaded_files')
+
+    const result = await collection.deleteOne({ 
+      openai_file_id: openaiFileId 
+    })
+
+    if (result.deletedCount === 0) {
+      return NextResponse.json(
+        { error: 'File not found in database' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({
+      message: 'File deleted successfully',
+      deleted_count: result.deletedCount
+    })
+
+  } catch (error) {
+    console.error('Delete error:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete file' },
+      { status: 500 }
+    )
+  }
+}

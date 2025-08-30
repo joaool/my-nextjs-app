@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
 export default function Upload() {
@@ -8,6 +8,8 @@ export default function Upload() {
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState('')
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([])
+  const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set())
+  const [loadingFiles, setLoadingFiles] = useState(true)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -57,20 +59,57 @@ export default function Upload() {
 
   const fetchFiles = async () => {
     try {
+      setLoadingFiles(true)
       const response = await fetch('/api/upload')
       const data = await response.json()
       if (response.ok) {
         setUploadedFiles(data.files)
+        console.log('Fetched files:', data.files) // Debug log
+      } else {
+        console.error('Failed to fetch files:', data.error)
       }
     } catch (error) {
       console.error('Error fetching files:', error)
+    } finally {
+      setLoadingFiles(false)
+    }
+  }
+
+  const handleDeleteFile = async (fileId: string, openaiFileId: string, filename: string) => {
+    if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
+      return
+    }
+
+    setDeletingFiles(prev => new Set(prev).add(fileId))
+    
+    try {
+      const response = await fetch(`/api/upload?fileId=${fileId}&openaiFileId=${openaiFileId}`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setMessage(`File "${filename}" deleted successfully`)
+        fetchFiles() // Refresh the file list
+      } else {
+        setMessage(`Error deleting file: ${data.error}`)
+      }
+    } catch (error) {
+      setMessage('Error deleting file. Please try again.')
+    } finally {
+      setDeletingFiles(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(fileId)
+        return newSet
+      })
     }
   }
 
   // Fetch files on component mount
-  useState(() => {
+  useEffect(() => {
     fetchFiles()
-  })
+  }, [])
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24">
@@ -132,17 +171,28 @@ export default function Upload() {
             Uploaded Files
           </h2>
           
-          {uploadedFiles.length === 0 ? (
-            <p className="text-gray-500 dark:text-gray-400">No files uploaded yet.</p>
+          {loadingFiles ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="ml-2 text-gray-600 dark:text-gray-400">Loading files...</span>
+            </div>
+          ) : uploadedFiles.length === 0 ? (
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">No files uploaded yet. Upload a file to see delete options.</p>
+              <p className="text-xs text-gray-400 mt-2">Debug: Files array length: {uploadedFiles.length}</p>
+              <pre className="text-xs text-gray-400 mt-2 bg-gray-100 dark:bg-gray-700 p-2 rounded overflow-auto">
+                {JSON.stringify(uploadedFiles, null, 2)}
+              </pre>
+            </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-600">
+              <table className="w-full divide-y divide-gray-200 dark:divide-gray-600">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Filename
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden md:table-cell">
                       OpenAI File ID
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -154,6 +204,9 @@ export default function Upload() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Uploaded
                     </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-32">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-600">
@@ -162,7 +215,7 @@ export default function Upload() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {file.original_filename}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400 hidden md:table-cell">
                         {file.openai_file_id}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
@@ -179,6 +232,15 @@ export default function Upload() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {new Date(file.uploaded_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <button
+                          onClick={() => handleDeleteFile(file.id, file.openai_file_id, file.original_filename)}
+                          disabled={deletingFiles.has(file.id)}
+                          className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold py-2 px-4 rounded-md transition-colors text-sm min-w-[80px]"
+                        >
+                          {deletingFiles.has(file.id) ? 'Deleting...' : '🗑️ Delete'}
+                        </button>
                       </td>
                     </tr>
                   ))}

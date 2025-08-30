@@ -39,15 +39,44 @@ function ContactForm() {
         body: JSON.stringify({ ...formData, username }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        setAnswer(data.answer || 'No answer generated')
-        setCitations(data.citations || [])
-        setMessage('Your question has been answered!')
+      if (response.ok && response.body) {
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let streamedAnswer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value)
+          const lines = chunk.split('\n')
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                
+                if (data.type === 'delta') {
+                  streamedAnswer += data.content
+                  setAnswer(streamedAnswer)
+                } else if (data.type === 'complete') {
+                  setCitations(data.citations || [])
+                  setMessage('Your question has been answered!')
+                } else if (data.type === 'fallback') {
+                  setAnswer(data.content)
+                  setMessage('Your question has been answered!')
+                }
+              } catch (parseError) {
+                console.error('Error parsing SSE data:', parseError)
+              }
+            }
+          }
+        }
       } else {
         setMessage('Error submitting form. Please try again.')
       }
     } catch (error) {
+      console.error('Fetch error:', error)
       setMessage('Error submitting form. Please try again.')
     } finally {
       setIsSubmitting(false)
@@ -56,7 +85,7 @@ function ContactForm() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <div className="max-w-2xl mx-auto w-full">
+      <div className="max-w-4xl mx-auto w-full">
         <div className="flex items-center justify-center mb-8">
           <div className="w-12 h-12 mr-4 flex items-center justify-center">
             <img 
@@ -109,7 +138,7 @@ function ContactForm() {
               <label htmlFor="answer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Answer
               </label>
-              <div className="w-full min-h-48 p-3 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-50 dark:bg-gray-700 overflow-y-auto">
+              <div className="w-full h-60 max-h-60 p-3 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-50 dark:bg-gray-700 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200 dark:scrollbar-thumb-gray-600 dark:scrollbar-track-gray-800">
                 {isSubmitting ? (
                   <div className="flex items-center justify-center h-32">
                     <div className="flex items-center space-x-2">
