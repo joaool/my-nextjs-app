@@ -14,6 +14,8 @@ function ContactForm() {
   const [citations, setCitations] = useState<any[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState('')
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [shortAnswer, setShortAnswer] = useState('')
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -28,7 +30,9 @@ function ContactForm() {
     setIsSubmitting(true)
     setMessage('')
     setAnswer('') // Clear previous answer
+    setShortAnswer('')
     setCitations([]) // Clear previous citations
+    setIsExpanded(false)
 
     try {
       const response = await fetch('/api/contact', {
@@ -148,7 +152,15 @@ function ContactForm() {
                   </div>
                 ) : (
                   <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                    {answer || 'Ask a question above and the answer will appear here.'}
+                    {answer ? (
+                      <div>
+                        <div>
+                          {answer}
+                        </div>
+                      </div>
+                    ) : (
+                      'Ask a question above and the answer will appear here.'
+                    )}
                   </div>
                 )}
                 
@@ -163,7 +175,7 @@ function ContactForm() {
                           </span>
                           {citation.file_citation && (
                             <span className="ml-2">
-                              {citation.file_citation.file_id} - {citation.text}
+                              {citation.cached_metadata?.display_name || citation.file_citation.file_id} - {citation.text}
                             </span>
                           )}
                         </div>

@@ -30,19 +30,28 @@ export async function POST(request: NextRequest) {
         throw new Error('OpenAI client not initialized')
       }
 
-      // Get all uploaded file IDs from MongoDB
+      // Get all uploaded file IDs and cached metadata from MongoDB
       const client = await clientPromise
       const db = client.db('nextjs_app')
       const filesCollection = db.collection('uploaded_files')
       
       const uploadedFiles = await filesCollection
-        .find({})
+        .find({}, { 
+          projection: { 
+            openai_file_id: 1, 
+            filename: 1, 
+            original_filename: 1,
+            metadata_cache: 1,
+            file_size: 1,
+            file_type: 1
+          } 
+        })
         .toArray()
       
       const fileIds = uploadedFiles.map(file => file.openai_file_id)
       
-      console.log('Found uploaded files:', uploadedFiles.length)
-      console.log('File IDs:', fileIds)
+      console.log('Found uploaded files with cached metadata:', uploadedFiles.length)
+      console.log('Using cached file metadata instead of API calls')
 
       // Get or create assistant with file_search enabled
       const assistant = await getOrCreateAssistant()
@@ -74,6 +83,7 @@ export async function POST(request: NextRequest) {
 
             let fullAnswer = ''
             let streamCitations: any[] = []
+            let firstChunkSent = false
 
             // Handle the streaming events
             for await (const event of run) {
@@ -83,7 +93,7 @@ export async function POST(request: NextRequest) {
                   const textDelta = delta.content[0].text?.value || ''
                   fullAnswer += textDelta
                   
-                  // Send the delta to the client
+                  // Stream all content as it comes
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
                     type: 'delta', 
                     content: textDelta 
@@ -94,12 +104,28 @@ export async function POST(request: NextRequest) {
                 const message = event.data
                 if (message.content[0] && message.content[0].type === 'text') {
                   const textContent = message.content[0].text
+                  // Extract citations with cached metadata
                   if (textContent.annotations) {
-                    streamCitations = textContent.annotations.map((annotation: any) => ({
-                      type: annotation.type,
-                      text: annotation.text,
-                      file_citation: annotation.file_citation
-                    }))
+                    streamCitations = textContent.annotations.map((annotation: any) => {
+                      const baseCitation: any = {
+                        type: annotation.type,
+                        text: annotation.text,
+                        file_citation: annotation.file_citation
+                      }
+                      
+                      // Enhance with cached metadata if available
+                      if (annotation.file_citation?.file_id) {
+                        const cachedFile = uploadedFiles.find(f => f.openai_file_id === annotation.file_citation.file_id)
+                        if (cachedFile?.metadata_cache) {
+                          baseCitation.cached_metadata = {
+                            display_name: cachedFile.metadata_cache.display_name,
+                            type_display: cachedFile.metadata_cache.type_display
+                          }
+                        }
+                      }
+                      
+                      return baseCitation
+                    })
                   }
                 }
               } else if (event.event === 'thread.run.completed') {
@@ -227,7 +253,7 @@ export async function POST(request: NextRequest) {
       if (!assistantId && openai) {
         const assistant = await openai.beta.assistants.create({
           name: 'FrameLink Support Assistant',
-          instructions: 'You are a helpful assistant for FrameLink Support. When users attach files, search through them to find the most relevant information. Focus on providing concise, accurate answers with citations to the most important source content. Prioritize quality over quantity in your responses.',
+          instructions: 'You are a support copilot for the “Medical Clinic App”.Follow these rules:\n\n1.Menu awarness (two levels):\n - If the vector store contains a file ending with “_Menus.json”, use it as the source of truth for the app’s menu hierarchy.\n - Each top-level item is a ROOT MENU; each child is a SUBMENU.\n - Prefer the structured JSON over any unstructured menu text when both exist.\n\n2.Task routing:\n - If the user’s goal maps to a menu path, FIRST resolve the best matching path:<ROOT MENU> → <SUBMENU>\n - Use aliases/keywords/roles from the JSON to improve matching.\n - If multiple paths are plausible, ask a SINGLE clarifying question before proceeding.\n - THEN provide concise, step-by-step navigation instructions to reach that submenu in the app.\n - AFTER navigation, summarize the key steps or rules from the most relevant operation guide(s).\n\n3.Retrieval scope:\n - When explaining “how to do X”, prefer documents tagged with matching `menu_root` and `menu_sub`.\n - If the question is general (not tied to a menu), search all documents.\n\n4.Output format:\n - Start with a one-line summary.\n - Then show a “Navigation” block listing the exact path and any deeplink if present.\n - Then show a “Steps” block (3-7 bullets max).\n - End with “Related info & tips” if useful.\n\n5.Brevity and accuracy:\n - Be concise. If a detail is not in the documents, say so.\n - If user’s role is known (patient, reception, admin), prefer paths that match their role; otherwise state role assumptions.\n\n6.Do NOT invent menu items or steps. If uncertain, request one clarification.',
           model: 'gpt-4o-mini',
           tools: [{ 
             type: 'file_search',

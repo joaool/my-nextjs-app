@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       const db = client.db('nextjs_app')
       const collection = db.collection('uploaded_files')
 
-      // Save file metadata to MongoDB
+      // Save comprehensive file metadata to MongoDB for memoization
       const fileRecord = {
         openai_file_id: openaiFile.id,
         filename: openaiFile.filename,
@@ -77,7 +77,14 @@ export async function POST(request: NextRequest) {
         status: openaiFile.status,
         created_at: new Date(openaiFile.created_at * 1000), // Convert Unix timestamp
         uploaded_at: new Date(),
-        bytes: openaiFile.bytes
+        bytes: openaiFile.bytes,
+        // Cached metadata for fast retrieval
+        metadata_cache: {
+          display_name: file.name,
+          size_formatted: `${(file.size / 1024).toFixed(1)} KB`,
+          type_display: file.type.split('/')[1]?.toUpperCase() || 'FILE',
+          searchable_content: file.name.toLowerCase()
+        }
       }
 
       const result = await collection.insertOne(fileRecord)
@@ -147,7 +154,8 @@ export async function GET() {
         file_type: file.file_type,
         status: file.status,
         uploaded_at: file.uploaded_at,
-        bytes: file.bytes
+        bytes: file.bytes,
+        metadata_cache: file.metadata_cache
       }))
     })
 
