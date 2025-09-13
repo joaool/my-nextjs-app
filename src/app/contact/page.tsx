@@ -246,7 +246,7 @@ function ContactForm() {
       }
     } catch (error) {
       console.error('Fetch error:', error)
-      setMessage(`Network error: ${error.message}`)
+      setMessage(`Network error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`)
       
       // Add a fallback response for testing
       setConversation(prev => [...prev, {
